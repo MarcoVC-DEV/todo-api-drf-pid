@@ -4,13 +4,15 @@ from workspace.api.views import (
     WorkspaceDetailView,
     TaskListCreateView,
     TaskDetailView,
-    TagListCreateView, AddUserToWorkspaceView,
+    TagListCreateView, AddUserToWorkspaceView, AddUserToTaskView,
 )
 
 urlpatterns = [
     # Workspace URLs
     path('', WorkspaceListCreateView.as_view(), name='workspace-list-create'),
     path('add-user/<int:workspace_id>/', AddUserToWorkspaceView.as_view(), name='add-user-to-workspace'),
+
+path('tasks/<int:task_id>/add-user/', AddUserToTaskView.as_view(), name='add-user-to-task'),
 
     path('<int:pk>/', WorkspaceDetailView.as_view(), name='workspace-detail'),
 

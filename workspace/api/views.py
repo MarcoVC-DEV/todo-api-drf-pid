@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg import openapi
@@ -15,6 +16,71 @@ from workspace.api.serializers import TagSerializer
 from todo_api.pagination import DefaultPaginationLOS
 from rest_framework import filters
 
+
+class AddUserToTaskView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Add a user to a task. Only the admin of the workspace can perform this action.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'username': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Username of the user to add to the task.",
+                )
+            },
+            required=['username']
+        ),
+        responses={
+            200: openapi.Response(
+                description="User added to the task successfully.",
+                examples={
+                    "application/json": {
+                        "message": "User added to the task successfully."
+                    }
+                }
+            ),
+            400: "Bad Request",
+            403: "You do not have permission to add users to this task.",
+            404: "Task or user not found."
+        }
+    )
+    def post(self, request, task_id):
+        try:
+            # Get the task
+            task = Task.objects.get(id=task_id)
+            workspace = task.workspace
+
+            # Check if the user is the admin of the workspace
+            if workspace.admin != request.user:
+                return Response({"error": "You do not have permission to add users to this task."},
+                                status=status.HTTP_403_FORBIDDEN)
+
+            # Get the username from the request body
+            username = request.data.get('username')
+            if not username:
+                return Response({"error": "Username is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get the user to add
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            # Check if the user is a member of the workspace
+            if user not in workspace.members.all():
+                return Response({"error": "User is not a member of this workspace."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            # Assign the user to the task
+            task.assigned_to = user
+            task.save()
+
+            return Response({"message": "User added to the task successfully."}, status=status.HTTP_200_OK)
+
+        except Task.DoesNotExist:
+            return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
 
 class AddUserToWorkspaceView(APIView):
     permission_classes = [IsAuthenticated]
@@ -269,14 +335,32 @@ class TaskListCreateView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
     @swagger_auto_schema(
-        operation_description="Create a new task in the specified workspace.",
-        request_body=TaskSerializer,
+        operation_description="Create a new task in the specified workspace. Optionally, assign tags to the task.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'title': openapi.Schema(type=openapi.TYPE_STRING, description="Title of the task."),
+                'status': openapi.Schema(type=openapi.TYPE_STRING, description="Status of the task (e.g., 'pending')."),
+                'final_at': openapi.Schema(type=openapi.FORMAT_DATETIME, description="Deadline for the task."),
+                'tags': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Items(type=openapi.TYPE_INTEGER),  # Fixed: Specify the type of array items
+                    description="List of tag IDs to assign to the task."
+                )
+            },
+            required=['title']
+        ),
         responses={
             201: openapi.Response(
                 description="Task created successfully.",
                 examples={
-                    "application/json": {"id": 1, "title": "Task 1", "status": "pending",
-                             "workspace": {"id": 1, "title": "Workspace 1"}},
+                    "application/json": {
+                        "id": 1,
+                        "title": "Task 1",
+                        "status": "pending",
+                        "workspace": {"id": 1, "title": "Workspace 1"},
+                        "tags": [{"id": 1, "name": "Tag 1", "color": "#FF5733"}]
+                    }
                 }
             ),
             400: "Bad Request",
@@ -284,6 +368,7 @@ class TaskListCreateView(APIView):
             404: "Workspace not found"
         }
     )
+
     def post(self, request, workspace_id):
         try:
             workspace = Workspace.objects.get(id=workspace_id)
@@ -297,9 +382,16 @@ class TaskListCreateView(APIView):
             return Response({"error": "A task with this title already exists in this workspace."},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        tags_data = request.data.get('tags', [])
+        tags = Tag.objects.filter(id__in=tags_data, workspace=workspace)
+        if len(tags) != len(tags_data):
+            return Response({"error": "One or more tags do not exist or do not belong to the workspace."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         serializer = TaskSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(workspace=workspace)
+            task = serializer.save(workspace=workspace)
+            task.tags.set(tags)  # Assign the tags to the task
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
