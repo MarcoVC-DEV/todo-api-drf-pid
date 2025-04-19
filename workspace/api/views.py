@@ -243,6 +243,7 @@ class TaskListCreateView(APIView):
     )
 
     def get(self, request, workspace_id):
+        Task.delete_old_completed_tasks()
         tasks = Task.objects.filter(workspace__id=workspace_id, workspace__members=request.user)
         serializer = TaskSerializer(tasks, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

@@ -1,5 +1,9 @@
+from datetime import timedelta
+
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils.timezone import now
+
 
 # Create your models here.
 class Workspace(models.Model):
@@ -48,3 +52,7 @@ class Task(models.Model):
     def can_delete(self, user):
         return self.workspace.admin == user
 
+    @classmethod
+    def delete_old_completed_tasks(cls):
+        three_months_ago = now() - timedelta(days=90)
+        cls.objects.filter(status='completed', final_at__lte=three_months_ago).delete()
