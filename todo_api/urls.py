@@ -23,11 +23,11 @@ from rest_framework import permissions
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="API de tu aplicación",
+        title="Task Managament API PID",
         default_version='v1',
-        description="Documentación de la API para el trabajo en equipo.",
+        description="API for managing tasks, workspaces, and tags.",
         terms_of_service="https://www.google.com/policies/terms/",
-        contact=openapi.Contact(email="tu_email@tu_dominio.com"),
+        contact=openapi.Contact(email="marcovc.dev@gmail.com"),
         license=openapi.License(name="MIT License"),
     ),
     public=True,
