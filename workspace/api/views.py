@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -36,7 +37,6 @@ class AddUserToWorkspaceView(APIView):
         }
     )
     def post(self, request, workspace_id):
-        # Verificar si el espacio de trabajo existe y si el usuario es el administrador
         try:
             workspace = Workspace.objects.get(id=workspace_id)
             if workspace.admin != request.user:
@@ -101,9 +101,16 @@ class WorkspaceListCreateView(APIView):
     )
 
     def get(self, request):
-        workspaces = Workspace.objects.filter(members=request.user)
-        serializer = WorkspaceSerializer(workspaces, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        workspaces = Workspace.objects.filter(Q(members=request.user) | Q(admin=request.user))
+
+        for backend in self.filter_backends:
+            workspaces = backend().filter_queryset(request, workspaces, self)
+
+        paginator = self.pagination_class()
+        paginated_workspaces = paginator.paginate_queryset(workspaces, request)
+
+        serializer = WorkspaceSerializer(paginated_workspaces, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     @swagger_auto_schema(
         operation_description="Create a new workspace. The user will be set as the admin.",
@@ -124,8 +131,10 @@ class WorkspaceListCreateView(APIView):
             400: "Bad Request"
         }
     )
-
     def post(self, request):
+        if Workspace.objects.filter(title=request.data.get('title')).exists():
+            return Response({"error": "A workspace with this title already exists."},
+                            status=status.HTTP_400_BAD_REQUEST)
         serializer = WorkspaceSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(admin=request.user)
@@ -135,6 +144,17 @@ class WorkspaceListCreateView(APIView):
 
 class WorkspaceDetailView(APIView):
     permission_classes = [IsAuthenticated]
+
+
+
+    def get_object(self, pk, user):
+        try:
+            workspace = Workspace.objects.get(pk=pk)
+            if user not in workspace.members.all() and workspace.admin != user:
+                return None
+            return workspace
+        except Workspace.DoesNotExist:
+            return None
 
     @swagger_auto_schema(
         operation_description="Retrieve details of a specific workspace by ID.",
@@ -147,22 +167,13 @@ class WorkspaceDetailView(APIView):
                         "title": "Workspace 1",
                         "description": "Description 1",
                         "admin": "admin_user",
-                        "members" : []
+                        "members": []
                     }
                 }
             ),
             404: "Workspace not found or access denied."
         }
     )
-
-    def get_object(self, pk, user):
-        try:
-            workspace = Workspace.objects.get(pk=pk)
-            if user not in workspace.members.all() and workspace.admin != user:
-                return None
-            return workspace
-        except Workspace.DoesNotExist:
-            return None
 
     def get(self, request, pk):
         workspace = self.get_object(pk, request.user)
@@ -244,9 +255,18 @@ class TaskListCreateView(APIView):
 
     def get(self, request, workspace_id):
         Task.delete_old_completed_tasks()
-        tasks = Task.objects.filter(workspace__id=workspace_id, workspace__members=request.user)
-        serializer = TaskSerializer(tasks, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        tasks = Task.objects.filter(workspace__id=workspace_id).filter(Q(workspace__members=request.user) | Q(workspace__admin=request.user))
+
+        for backend in self.filter_backends:
+            tasks = backend().filter_queryset(request, tasks, self)
+
+        paginator = self.pagination_class()
+        paginated_tasks = paginator.paginate_queryset(tasks, request)
+
+
+
+        serializer = TaskSerializer(paginated_tasks, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     @swagger_auto_schema(
         operation_description="Create a new task in the specified workspace.",
@@ -264,15 +284,18 @@ class TaskListCreateView(APIView):
             404: "Workspace not found"
         }
     )
-
     def post(self, request, workspace_id):
         try:
             workspace = Workspace.objects.get(id=workspace_id)
-            if request.user not in workspace.members.all():
+            if request.user not in workspace.members.all() and request.user != workspace.admin:
                 return Response({"error": "You do not have permission to create tasks in this workspace."},
                                 status=status.HTTP_403_FORBIDDEN)
         except Workspace.DoesNotExist:
             return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if Task.objects.filter(title=request.data.get('title'), workspace=workspace).exists():
+            return Response({"error": "A task with this title already exists in this workspace."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         serializer = TaskSerializer(data=request.data)
         if serializer.is_valid():
@@ -283,7 +306,6 @@ class TaskListCreateView(APIView):
 
 class TaskDetailView(APIView):
     permission_classes = [IsAuthenticated]
-
 
     def get_object(self, pk, user):
         try:
@@ -378,7 +400,6 @@ class TaskDetailView(APIView):
         task.delete()
         return Response({"message": "Task deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
 
-
 class TagListCreateView(APIView):
     permission_classes = [IsAuthenticated]
     pagination_class = DefaultPaginationLOS
@@ -402,11 +423,20 @@ class TagListCreateView(APIView):
             )
         }
     )
-
     def get(self, request, workspace_id):
-        tags = Tag.objects.filter(workspace__id=workspace_id, workspace__members=request.user)
-        serializer = TagSerializer(tags, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            workspace = Workspace.objects.get(id=workspace_id)
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        tags = Tag.objects.filter(Q(workspace__members=request.user) | Q(workspace__admin=request.user),
+                                  workspace__id=workspace_id)
+
+        paginator = self.pagination_class()
+        paginated_tags = paginator.paginate_queryset(tags, request)
+
+        serializer = TagSerializer(paginated_tags, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     @swagger_auto_schema(
         operation_description="Create a new tag in the specified workspace.",
@@ -428,10 +458,18 @@ class TagListCreateView(APIView):
             404: "Workspace not found"
         }
     )
-
     def post(self, request, workspace_id):
+        try:
+            workspace = Workspace.objects.get(id=workspace_id)
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if Tag.objects.filter(name=request.data.get('name'), workspace=workspace).exists():
+            return Response({"error": "A tag with this name already exists in this workspace."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         serializer = TagSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(workspace_id=workspace_id)
+            serializer.save(workspace=workspace)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
