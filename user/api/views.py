@@ -17,37 +17,19 @@ from todo_api.pagination import DefaultPaginationLOS
 
 
 # Create your views here.
-@api_view(['GET'])
-@permission_classes([IsAuthenticated],)
-def session_view(request):
-    if request.method == 'GET':
-        user = request.user
-        account = User.objects.get(username=user)
-        data = {}
-        
-        if account is not None:
-            data['username'] = account.username
-            data['email'] = account.email
-            data['first_name'] = account.first_name
-            data['last_name'] = account.last_name
-            data['is_staff'] = account.is_staff
-            return Response(data)
-        else:
-            data['error'] = 'El usuario no esta en sesion'
-            return Response(data, status.HTTP_500)
-        
+
 class RegistroView(generics.CreateAPIView):  
     queryset = User.objects.all()  
     serializer_class = RegistroSerializer  
   
     def create(self, request, *args, **kwargs):  
         response = super().create(request, *args, **kwargs)  
-        user = User.objects.get(username=response.data['username'])  
-        refresh = RefreshToken.for_user(user)  
-        response.data['token'] = {  
-            'refresh': str(refresh),  
-            'access': str(refresh.access_token)  
-        }
+        # user = User.objects.get(username=response.data['username'])
+        # refresh = RefreshToken.for_user(user)
+        # response.data['token'] = {
+        #     'refresh': str(refresh),
+        #     'access': str(refresh.access_token)
+        # }
         return response
     
     
@@ -74,18 +56,8 @@ def logout_view(request):
         return Response(status=status.HTTP_205_RESET_CONTENT)
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
-class UserListView(generics.ListAPIView):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsAdminUser]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = [ 'email', 'is_staff']
-    search_fields = ['username', 'email', 'first_name', 'last_name']
-    ordering_fields = ['username', 'id']
-    pagination_class = DefaultPaginationLOS
-    
-    
+
+
 
 class UserDeleteView(generics.DestroyAPIView):
     queryset = User.objects.all()
