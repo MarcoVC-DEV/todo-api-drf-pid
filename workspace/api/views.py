@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from django.db.models import Q
+from django.utils.timezone import now
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -260,7 +261,7 @@ class WorkspaceListCreateView(APIView):
     )
 
     def get(self, request):
-        workspaces = Workspace.objects.filter(Q(members=request.user) | Q(admin=request.user))
+        workspaces = Workspace.objects.filter(Q(members=request.user) | Q(admin=request.user)).distinct()
 
         for backend in self.filter_backends:
             workspaces = backend().filter_queryset(request, workspaces, self)
@@ -411,18 +412,23 @@ class TaskListCreateView(APIView):
             )
         }
     )
-
     def get(self, request, workspace_id):
         Task.delete_old_completed_tasks()
-        tasks = Task.objects.filter(workspace__id=workspace_id).filter(Q(workspace__members=request.user) | Q(workspace__admin=request.user))
+        try:
+            workspace = Workspace.objects.get(id=workspace_id)
+            if request.user != workspace.admin and request.user not in workspace.members.all():
+                return Response({"error": "You do not have permission to view tasks in this workspace."},
+                                status=status.HTTP_403_FORBIDDEN)
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        tasks = Task.objects.filter(workspace=workspace)
 
         for backend in self.filter_backends:
             tasks = backend().filter_queryset(request, tasks, self)
 
         paginator = self.pagination_class()
         paginated_tasks = paginator.paginate_queryset(tasks, request)
-
-
 
         serializer = TaskSerializer(paginated_tasks, many=True)
         return paginator.get_paginated_response(serializer.data)
@@ -611,11 +617,14 @@ class TagListCreateView(APIView):
     def get(self, request, workspace_id):
         try:
             workspace = Workspace.objects.get(id=workspace_id)
+            if request.user not in workspace.members.all() and request.user != workspace.admin:
+                return Response({"error": "You do not have permission to read tags in this workspace."},
+                                status=status.HTTP_403_FORBIDDEN)
         except Workspace.DoesNotExist:
             return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
 
         tags = Tag.objects.filter(Q(workspace__members=request.user) | Q(workspace__admin=request.user),
-                                  workspace__id=workspace_id)
+                                  workspace__id=workspace_id).distinct()
 
         paginator = self.pagination_class()
         paginated_tags = paginator.paginate_queryset(tags, request)
@@ -646,6 +655,9 @@ class TagListCreateView(APIView):
     def post(self, request, workspace_id):
         try:
             workspace = Workspace.objects.get(id=workspace_id)
+            if request.user not in workspace.members.all() and request.user != workspace.admin:
+                return Response({"error": "You do not have permission to create tags in this workspace."},
+                                status=status.HTTP_403_FORBIDDEN)
         except Workspace.DoesNotExist:
             return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -658,3 +670,132 @@ class TagListCreateView(APIView):
             serializer.save(workspace=workspace)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CompleteTaskView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Mark a task as completed. The user must be a member or admin of the workspace.",
+        manual_parameters=[
+            openapi.Parameter(
+                'task_id', openapi.IN_PATH, description="ID of the task to complete.",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Task completed successfully.",
+                examples={
+                    "application/json": {"message": "Task completed successfully."}
+                }
+            ),
+            403: openapi.Response(
+                description="User does not have permission to complete the task.",
+                examples={
+                    "application/json": {"message": "You do not have permission to complete this task."}
+                }
+            ),
+            404: openapi.Response(
+                description="Task not found.",
+                examples={
+                    "application/json": {"message": "Task not found."}
+                }
+            ),
+            400: openapi.Response(
+                description="This task is already completed and cannot be completed again.",
+                examples={
+                    "application/json": {"message": "This task is already completed and cannot be completed again."}
+                }
+            )
+        }
+    )
+
+    def post(self, request, task_id):
+        try:
+            # Obtener la tarea
+            task = Task.objects.get(id=task_id)
+            workspace = task.workspace
+
+            # Verificar si el usuario es el miembro asignado a la task o administrador del workspace
+            if request.user != workspace.admin and request.user != task.assigned_to:
+                return Response({"message": "You do not have permission to complete this task."},
+                                status=status.HTTP_403_FORBIDDEN)
+
+            if task.status == 'completed':
+                return Response({"message": "This task is already completed and cannot be completed again."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            # Cambiar el estado de la tarea a completada
+            task.status = 'completed'
+            task.final_at = now()
+            task.save()
+
+            return Response({"message": "Task completed successfully."}, status=status.HTTP_200_OK)
+
+        except Task.DoesNotExist:
+            return Response({"message": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class CompleteUserTaskView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Mark a user task as completed. The task must belong to the authenticated user.",
+        manual_parameters=[
+            openapi.Parameter(
+                'task_id', openapi.IN_PATH, description="ID of the user task to complete.",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="User task completed successfully.",
+                examples={
+                    "application/json": {"message": "User task completed successfully."}
+                }
+            ),
+            403: openapi.Response(
+                description="User does not have permission to complete this task.",
+                examples={
+                    "application/json": {"message": "You do not have permission to complete this task."}
+                }
+            ),
+            404: openapi.Response(
+                description="User task not found.",
+                examples={
+                    "application/json": {"message": "User task not found."}
+                }
+            ),
+            400: openapi.Response(
+                description="This task is already completed and cannot be completed again.",
+                examples={
+                    "application/json": {"message": "This task is already completed and cannot be completed again."}
+                }
+            )
+        }
+    )
+    def post(self, request, task_id):
+        try:
+            # Obtener la tarea del usuario
+            task = UserTask.objects.get(id=task_id)
+
+            # Verificar que la tarea pertenece al usuario autenticado
+            if task.user != request.user:
+                return Response({"message": "You do not have permission to complete this task."},
+                                status=status.HTTP_403_FORBIDDEN)
+
+            # Verificar si la tarea ya está completada
+            if task.status == 'completed':
+                return Response({"message": "This task is already completed and cannot be completed again."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            # Cambiar el estado de la tarea a completada
+            task.status = 'completed'
+            task.final_at = now()
+            task.save()
+
+            return Response({"message": "User task completed successfully."}, status=status.HTTP_200_OK)
+
+        except UserTask.DoesNotExist:
+            return Response({"message": "User task not found."}, status=status.HTTP_404_NOT_FOUND)
