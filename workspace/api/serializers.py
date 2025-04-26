@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from workspace.models import Workspace, Tag, Task
+from workspace.models import Workspace, Tag, Task, UserTag, UserTask
 from django.contrib.auth.models import User
 
 class WorkspaceSerializer(serializers.ModelSerializer):
@@ -61,3 +61,39 @@ class AddUserToWorkspaceSerializer(serializers.Serializer):
         except User.DoesNotExist:
             raise serializers.ValidationError("User with this username does not exist.")
         return user
+
+class UserTagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserTag
+        fields = ['id', 'name', 'color', 'user']
+        read_only_fields = ['user']
+
+
+class UserTaskSerializer(serializers.ModelSerializer):
+    tags = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        help_text="List of tag IDs to assign to the task."
+    )
+    tags_detail = UserTagSerializer(many=True, read_only=True, source='tags')
+
+    class Meta:
+        model = UserTask
+        fields = [
+            'id', 'title', 'status', 'created_at', 'final_at',
+            'user', 'tags', 'tags_detail'
+        ]
+        read_only_fields = ['user']
+
+    def create(self, validated_data):
+        tags_data = validated_data.pop('tags', [])
+        user_task = super().create(validated_data)
+
+        # Validate and assign tags
+        tags = UserTag.objects.filter(id__in=tags_data, user=user_task.user)
+        if len(tags) != len(tags_data):
+            raise serializers.ValidationError("One or more tags do not exist or do not belong to the user.")
+        user_task.tags.set(tags)
+
+        return user_task

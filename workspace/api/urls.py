@@ -4,22 +4,28 @@ from workspace.api.views import (
     WorkspaceDetailView,
     TaskListCreateView,
     TaskDetailView,
-    TagListCreateView, AddUserToWorkspaceView, AddUserToTaskView,
+    TagListCreateView,
+    AddUserToWorkspaceView,
+    AddUserToTaskView,
+    UserTagListCreateView,
+    UserTaskListCreateView,
 )
 
 urlpatterns = [
+    # User-specific URLs
+    path('user/tags/', UserTagListCreateView.as_view(), name='user-tag-list-create'),
+    path('user/tasks/', UserTaskListCreateView.as_view(), name='user-task-list-create'),
+
     # Workspace URLs
-    path('', WorkspaceListCreateView.as_view(), name='workspace-list-create'),
-    path('add-user/<int:workspace_id>/', AddUserToWorkspaceView.as_view(), name='add-user-to-workspace'),
+    path('workspaces/', WorkspaceListCreateView.as_view(), name='workspace-list-create'),
+    path('workspaces/<int:pk>/', WorkspaceDetailView.as_view(), name='workspace-detail'),
+    path('workspaces/<int:workspace_id>/add-user/', AddUserToWorkspaceView.as_view(), name='add-user-to-workspace'),
 
-path('tasks/<int:task_id>/add-user/', AddUserToTaskView.as_view(), name='add-user-to-task'),
+    # Task URLs (Workspace-specific)
+    path('workspaces/<int:workspace_id>/tasks/', TaskListCreateView.as_view(), name='workspace-task-list-create'),
+    path('workspace/tasks/<int:pk>/', TaskDetailView.as_view(), name='task-detail'),
+    path('workspace/tasks/<int:task_id>/add-user/', AddUserToTaskView.as_view(), name='add-user-to-task'),
 
-    path('<int:pk>/', WorkspaceDetailView.as_view(), name='workspace-detail'),
-
-    # Task URLs
-    path('tasks/<int:workspace_id>/', TaskListCreateView.as_view(), name='task-list-create'),
-    path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task-detail'),
-
-    # Tag URLs
-    path('tags/<int:workspace_id>/', TagListCreateView.as_view(), name='tag-list-create'),
+    # Tag URLs (Workspace-specific)
+    path('workspaces/<int:workspace_id>/tags/', TagListCreateView.as_view(), name='workspace-tag-list-create'),
 ]

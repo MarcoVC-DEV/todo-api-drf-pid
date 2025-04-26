@@ -7,14 +7,107 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from workspace.models import Workspace
-from workspace.api.serializers import WorkspaceSerializer, AddUserToWorkspaceSerializer
+from workspace.models import Workspace, UserTask, UserTag
+from workspace.api.serializers import WorkspaceSerializer, AddUserToWorkspaceSerializer, UserTagSerializer, \
+    UserTaskSerializer
 from workspace.models import Task
 from workspace.api.serializers import TaskSerializer
 from workspace.models import Tag
 from workspace.api.serializers import TagSerializer
 from todo_api.pagination import DefaultPaginationLOS
 from rest_framework import filters
+
+
+
+class UserTagListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a list of tags associated with the user.",
+        responses={
+            200: openapi.Response(
+                description="List of user tags.",
+                examples={
+                    "application/json": [
+                        {"id": 1, "name": "Personal", "color": "#FF5733"},
+                        {"id": 2, "name": "Work", "color": "#33FF57"}
+                    ]
+                }
+            )
+        }
+    )
+    def get(self, request):
+        tags = UserTag.objects.filter(user=request.user)
+        serializer = UserTagSerializer(tags, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        operation_description="Create a new tag associated with the user.",
+        request_body=UserTagSerializer,
+        responses={
+            201: openapi.Response(
+                description="User tag created successfully.",
+                examples={
+                    "application/json": {"id": 1, "name": "Personal", "color": "#FF5733"}
+                }
+            ),
+            400: "Bad Request"
+        }
+    )
+    def post(self, request):
+        if UserTag.objects.filter(name=request.data.get('name'), user=request.user).exists():
+            return Response({"error": "A tag with this name already exists."}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = UserTagSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserTaskListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a list of tasks associated with the user.",
+        responses={
+            200: openapi.Response(
+                description="List of user tasks.",
+                examples={
+                    "application/json": [
+                        {"id": 1, "title": "Buy groceries", "status": "pending"},
+                        {"id": 2, "title": "Read a book", "status": "completed"}
+                    ]
+                }
+            )
+        }
+    )
+    def get(self, request):
+        tasks = UserTask.objects.filter(user=request.user)
+        serializer = UserTaskSerializer(tasks, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        operation_description="Create a new task associated with the user.",
+        request_body=UserTaskSerializer,
+        responses={
+            201: openapi.Response(
+                description="User task created successfully.",
+                examples={
+                    "application/json": {"id": 1, "title": "Buy groceries", "status": "pending"}
+                }
+            ),
+            400: "Bad Request"
+        }
+    )
+    def post(self, request):
+        serializer = UserTaskSerializer(data=request.data)
+        if UserTask.objects.filter(title=request.data.get('title'), user=request.user).exists():
+            return Response({"error": "A task with this name already exists."}, status=status.HTTP_400_BAD_REQUEST)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class AddUserToTaskView(APIView):
