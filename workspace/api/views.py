@@ -799,3 +799,94 @@ class CompleteUserTaskView(APIView):
 
         except UserTask.DoesNotExist:
             return Response({"message": "User task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class UserTagDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Delete a specific tag associated with the authenticated user.",
+        manual_parameters=[
+            openapi.Parameter(
+                'tag_id', openapi.IN_PATH, description="ID of the tag to delete.",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={
+            204: openapi.Response(
+                description="Tag deleted successfully.",
+                examples={
+                    "application/json": {"message": "Tag deleted successfully."}
+                }
+            ),
+            403: openapi.Response(
+                description="User does not have permission to delete this tag.",
+                examples={
+                    "application/json": {"error": "You do not have permission to delete this tag."}
+                }
+            ),
+            404: openapi.Response(
+                description="Tag not found.",
+                examples={
+                    "application/json": {"error": "Tag not found."}
+                }
+            )
+        }
+    )
+    def delete(self, request, tag_id):
+        try:
+            # Verificar que la etiqueta pertenece al usuario autenticado
+            tag = UserTag.objects.get(id=tag_id)
+            if tag.user != request.user:
+                return Response({"error": "You do not have permission to delete this tag."},
+                                status=status.HTTP_403_FORBIDDEN)
+            tag.delete()
+            return Response({"message": "Tag deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except UserTag.DoesNotExist:
+            return Response({"error": "Tag not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+class UserTaskDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Delete a specific task associated with the authenticated user.",
+        manual_parameters=[
+            openapi.Parameter(
+                'task_id', openapi.IN_PATH, description="ID of the task to delete.",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={
+            204: openapi.Response(
+                description="Task deleted successfully.",
+                examples={
+                    "application/json": {"message": "Task deleted successfully."}
+                }
+            ),
+            403: openapi.Response(
+                description="User does not have permission to delete this task.",
+                examples={
+                    "application/json": {"error": "You do not have permission to delete this task."}
+                }
+            ),
+            404: openapi.Response(
+                description="Task not found.",
+                examples={
+                    "application/json": {"error": "Task not found."}
+                }
+            )
+        }
+    )
+    def delete(self, request, task_id):
+        try:
+            # Verify that the task belongs to the authenticated user
+            task = UserTask.objects.get(id=task_id)
+            if task.user != request.user:
+                return Response({"error": "You do not have permission to delete this task."},
+                                status=status.HTTP_403_FORBIDDEN)
+            task.delete()
+            return Response({"message": "Task deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except UserTask.DoesNotExist:
+            return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND)

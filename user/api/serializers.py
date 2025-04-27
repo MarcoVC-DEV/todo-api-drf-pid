@@ -6,19 +6,17 @@ from django.core.validators import validate_email
 
 
 class RegistroSerializer(serializers.ModelSerializer):
-    #password2 = serializers.CharField(style={'input_type': 'password'}, write_only=True)  
-  
+    # Clase Meta para definir el modelo y los campos que se utilizarán
     class Meta:  
         model = User  
-        fields = ['username', 'email', 'first_name', 'last_name' , 'password' ]#, 'password2']  
+        fields = ['username', 'email', 'first_name', 'last_name' , 'password' ]
         extra_kwargs = {  
             'password': {'write_only': True}  
-        }  
-  
+        }
+
+    # Metodo para validar los datos de entrada
     def validate(self, data):  
-        # Verificar que las contraseñas coincidan
-        # if data['password'] != data['password2']:  
-        #     raise serializers.ValidationError({'password': 'Las contraseñas no coinciden.'})  
+
 
         # Verificar que el correo electrónico no esté en uso
         if User.objects.filter(email=data['email']).exists():  
@@ -48,12 +46,16 @@ class RegistroSerializer(serializers.ModelSerializer):
     
     
 class UserSerializer(serializers.ModelSerializer):
+    # Campo calculado para obtener el nombre completo del usuario
     full_name = serializers.SerializerMethodField()
 
     class Meta:
+        # Modelo asociado al serializador
         model = User
+        # Campos que se incluirán en la representación del usuario
         fields = ['id', 'username', 'email','full_name']
 
+    # Metodo para calcular el nombre completo del usuario
     def get_full_name(self, object):
         return f"{object.first_name} {object.last_name}"
 
