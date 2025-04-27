@@ -2,7 +2,7 @@
 
 ## Descripción del Proyecto
 
-Este proyecto es una API RESTful desarrollada con Django y Django REST Framework (DRF) para la gestión de tareas, espacios de trabajo y etiquetas. Está diseñada para facilitar la organización y colaboración en equipos, permitiendo a los usuarios crear, asignar y completar tareas dentro de espacios de trabajo compartidos.
+Este proyecto es una API RESTful desarrollada con Django y Django REST Framework (DRF) para la gestión de tareas, espacios de trabajo y etiquetas. Está diseñada para facilitar la organización y colaboración en equipos, permitiendo a los usuarios crear, asignar y completar tareas dentro de espacios de trabajo compartidos. Este proyecto tiene como objetivo cumplir con los requisitos de una asignatura de prácticas laborales y se encuentra aún en desarrollo.
 
 ### Características principales:
 - Gestión de espacios de trabajo: creación, edición, eliminación y asignación de usuarios.
