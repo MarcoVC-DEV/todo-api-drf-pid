@@ -142,32 +142,32 @@ class AddUserToTaskView(APIView):
     )
     def post(self, request, task_id):
         try:
-            # Get the task
+
             task = Task.objects.get(id=task_id)
             workspace = task.workspace
 
-            # Check if the user is the admin of the workspace
+
             if workspace.admin != request.user:
                 return Response({"error": "You do not have permission to add users to this task."},
                                 status=status.HTTP_403_FORBIDDEN)
 
-            # Get the username from the request body
+
             username = request.data.get('username')
             if not username:
                 return Response({"error": "Username is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Get the user to add
+
             try:
                 user = User.objects.get(username=username)
             except User.DoesNotExist:
                 return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-            # Check if the user is a member of the workspace
+
             if user not in workspace.members.all():
                 return Response({"error": "User is not a member of this workspace."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-            # Assign the user to the task
+
             task.assigned_to = user
             task.save()
 
@@ -205,7 +205,7 @@ class AddUserToWorkspaceView(APIView):
         except Workspace.DoesNotExist:
             return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Validar el usuario a agregar
+
         serializer = AddUserToWorkspaceSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['username']
@@ -713,11 +713,11 @@ class CompleteTaskView(APIView):
 
     def post(self, request, task_id):
         try:
-            # Obtener la tarea
+
             task = Task.objects.get(id=task_id)
             workspace = task.workspace
 
-            # Verificar si el usuario es el miembro asignado a la task o administrador del workspace
+
             if request.user != workspace.admin and request.user != task.assigned_to:
                 return Response({"message": "You do not have permission to complete this task."},
                                 status=status.HTTP_403_FORBIDDEN)
@@ -726,7 +726,6 @@ class CompleteTaskView(APIView):
                 return Response({"message": "This task is already completed and cannot be completed again."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-            # Cambiar el estado de la tarea a completada
             task.status = 'completed'
             task.final_at = now()
             task.save()
@@ -777,20 +776,20 @@ class CompleteUserTaskView(APIView):
     )
     def post(self, request, task_id):
         try:
-            # Obtener la tarea del usuario
+
             task = UserTask.objects.get(id=task_id)
 
-            # Verificar que la tarea pertenece al usuario autenticado
+
             if task.user != request.user:
                 return Response({"message": "You do not have permission to complete this task."},
                                 status=status.HTTP_403_FORBIDDEN)
 
-            # Verificar si la tarea ya está completada
+
             if task.status == 'completed':
                 return Response({"message": "This task is already completed and cannot be completed again."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-            # Cambiar el estado de la tarea a completada
+
             task.status = 'completed'
             task.final_at = now()
             task.save()
@@ -799,3 +798,94 @@ class CompleteUserTaskView(APIView):
 
         except UserTask.DoesNotExist:
             return Response({"message": "User task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class UserTagDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Delete a specific tag associated with the authenticated user.",
+        manual_parameters=[
+            openapi.Parameter(
+                'tag_id', openapi.IN_PATH, description="ID of the tag to delete.",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={
+            204: openapi.Response(
+                description="Tag deleted successfully.",
+                examples={
+                    "application/json": {"message": "Tag deleted successfully."}
+                }
+            ),
+            403: openapi.Response(
+                description="User does not have permission to delete this tag.",
+                examples={
+                    "application/json": {"error": "You do not have permission to delete this tag."}
+                }
+            ),
+            404: openapi.Response(
+                description="Tag not found.",
+                examples={
+                    "application/json": {"error": "Tag not found."}
+                }
+            )
+        }
+    )
+    def delete(self, request, tag_id):
+        try:
+
+            tag = UserTag.objects.get(id=tag_id)
+            if tag.user != request.user:
+                return Response({"error": "You do not have permission to delete this tag."},
+                                status=status.HTTP_403_FORBIDDEN)
+            tag.delete()
+            return Response({"message": "Tag deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except UserTag.DoesNotExist:
+            return Response({"error": "Tag not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+class UserTaskDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Delete a specific task associated with the authenticated user.",
+        manual_parameters=[
+            openapi.Parameter(
+                'task_id', openapi.IN_PATH, description="ID of the task to delete.",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={
+            204: openapi.Response(
+                description="Task deleted successfully.",
+                examples={
+                    "application/json": {"message": "Task deleted successfully."}
+                }
+            ),
+            403: openapi.Response(
+                description="User does not have permission to delete this task.",
+                examples={
+                    "application/json": {"error": "You do not have permission to delete this task."}
+                }
+            ),
+            404: openapi.Response(
+                description="Task not found.",
+                examples={
+                    "application/json": {"error": "Task not found."}
+                }
+            )
+        }
+    )
+    def delete(self, request, task_id):
+        try:
+
+            task = UserTask.objects.get(id=task_id)
+            if task.user != request.user:
+                return Response({"error": "You do not have permission to delete this task."},
+                                status=status.HTTP_403_FORBIDDEN)
+            task.delete()
+            return Response({"message": "Task deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except UserTask.DoesNotExist:
+            return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND)

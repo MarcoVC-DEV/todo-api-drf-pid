@@ -9,14 +9,18 @@ from workspace.api.views import (
     AddUserToTaskView,
     UserTagListCreateView,
     UserTaskListCreateView, CompleteTaskView, CompleteUserTaskView,
+    UserTagDeleteView, UserTaskDeleteView
 )
 
 urlpatterns = [
     # User-specific URLs
     path('user/tags/', UserTagListCreateView.as_view(), name='user-tag-list-create'),
+    path('user/tags/<int:tag_id>/delete/', UserTagDeleteView.as_view(), name='delete-user-tag'),
     path('user/tasks/', UserTaskListCreateView.as_view(), name='user-task-list-create'),
-
     path('user/tasks/<int:task_id>/complete/', CompleteUserTaskView.as_view(), name='complete-user-task'),
+    path('user/tasks/<int:task_id>/delete/', UserTaskDeleteView.as_view(), name='delete-user-task'),
+
+
 
     # Workspace URLs
     path('workspaces/', WorkspaceListCreateView.as_view(), name='workspace-list-create'),
