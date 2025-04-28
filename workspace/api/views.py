@@ -110,6 +110,100 @@ class UserTaskListCreateView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class UserTaskDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, task_id):
+        try:
+            task = UserTask.objects.get(pk=task_id, user=request.user)
+        except UserTask.DoesNotExist:
+            return Response({"error": "Task not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = UserTaskSerializer(task)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, task_id):
+        try:
+            task = UserTask.objects.get(pk=task_id, user=request.user)
+        except UserTask.DoesNotExist:
+            return Response({"error": "Task not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = UserTaskSerializer(task, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class RemoveUserFromWorkspaceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Remove a user from a workspace. Only the admin of the workspace can perform this action.",
+        manual_parameters=[
+            openapi.Parameter(
+                'username', openapi.IN_QUERY, description="Username of the user to remove.",
+                type=openapi.TYPE_STRING, required=True
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="User removed successfully.",
+                examples={
+                    "application/json": {"message": "User removed successfully from the workspace."}
+                }
+            ),
+            400: openapi.Response(
+                description="Bad Request.",
+                examples={
+                    "application/json": {"error": "User is not a member of this workspace."}
+                }
+            ),
+            403: openapi.Response(
+                description="Forbidden.",
+                examples={
+                    "application/json": {"error": "You do not have permission to remove users from this workspace."}
+                }
+            ),
+            404: openapi.Response(
+                description="Workspace or user not found.",
+                examples={
+                    "application/json": {"error": "Workspace not found."}
+                }
+            )
+        }
+    )
+    def delete(self, request, workspace_id):
+        try:
+            workspace = Workspace.objects.get(id=workspace_id)
+
+            if workspace.admin != request.user:
+                return Response({"error": "You do not have permission to remove users from this workspace."},
+                                status=status.HTTP_403_FORBIDDEN)
+
+            username = request.data.get('username')
+
+            if not username:
+                return Response({"error": "Username is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+            if user not in workspace.members.all():
+                return Response({"error": "User is not a member of this workspace."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+
+            workspace.members.remove(user)
+            return Response({"message": "User removed successfully from the workspace."}, status=status.HTTP_200_OK)
+
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
+
 
 class AddUserToTaskView(APIView):
     permission_classes = [IsAuthenticated]
@@ -671,6 +765,59 @@ class TagListCreateView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class RemoveTagFromWorkspaceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Remove a tag from a workspace. Only the admin of the workspace can perform this action.",
+        manual_parameters=[
+            openapi.Parameter(
+                'tag_id', openapi.IN_PATH, description="ID of the tag to remove.",
+                type=openapi.TYPE_INTEGER, required=True
+            )
+        ],
+        responses={
+            204: openapi.Response(
+                description="Tag removed successfully.",
+                examples={
+                    "application/json": {"message": "Tag removed successfully from the workspace."}
+                }
+            ),
+            403: openapi.Response(
+                description="Forbidden.",
+                examples={
+                    "application/json": {"error": "You do not have permission to remove tags from this workspace."}
+                }
+            ),
+            404: openapi.Response(
+                description="Tag or workspace not found.",
+                examples={
+                    "application/json": {"error": "Tag not found."}
+                }
+            )
+        }
+    )
+    def delete(self, request, workspace_id, tag_id):
+        try:
+            workspace = Workspace.objects.get(id=workspace_id)
+
+
+            if workspace.admin != request.user:
+                return Response({"error": "You do not have permission to remove tags from this workspace."},
+                                status=status.HTTP_403_FORBIDDEN)
+
+            try:
+                tag = Tag.objects.get(id=tag_id, workspace=workspace)
+            except Tag.DoesNotExist:
+                return Response({"error": "Tag not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+            tag.delete()
+            return Response({"message": "Tag removed successfully from the workspace."}, status=status.HTTP_204_NO_CONTENT)
+
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
+
 
 class CompleteTaskView(APIView):
     permission_classes = [IsAuthenticated]
@@ -889,3 +1036,48 @@ class UserTaskDeleteView(APIView):
             return Response({"message": "Task deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
         except UserTask.DoesNotExist:
             return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class NonWorkspaceUsersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a list of usernames that are not members of the workspace. Only the admin of the workspace can access this.",
+        responses={
+            200: openapi.Response(
+                description="List of usernames not in the workspace.",
+                examples={
+                    "application/json": ["user1", "user2", "user3"]
+                }
+            ),
+            403: openapi.Response(
+                description="Forbidden.",
+                examples={
+                    "application/json": {"error": "You do not have permission to view this list."}
+                }
+            ),
+            404: openapi.Response(
+                description="Workspace not found.",
+                examples={
+                    "application/json": {"error": "Workspace not found."}
+                }
+            )
+        }
+    )
+    def get(self, request, workspace_id):
+        try:
+            workspace = Workspace.objects.get(id=workspace_id)
+
+
+            if workspace.admin != request.user:
+                return Response({"error": "You do not have permission to view this list."},
+                                status=status.HTTP_403_FORBIDDEN)
+
+
+            non_members = User.objects.exclude(id__in=workspace.members.values_list('id', flat=True))
+            usernames = non_members.values_list('username', flat=True)
+
+            return Response(usernames, status=status.HTTP_200_OK)
+
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found."}, status=status.HTTP_404_NOT_FOUND)
